@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PPA Analyzer</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="../shared/sidebar.css" />
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- External Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+
+<body>
+  <!-- Sidebar -->
+  <div id="sidebar-container"></div>
+
+  <!-- Main Content -->
+  <div class="main">
+    <h1>VAS / Reach / Cart PPA Analyzer</h1>
+
+    <div class="input-area" id="uploadSection">
+      <p>Upload your Excel file to analyze PPA (Pieces Per Associate) metrics:</p>
+      <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+        📂 Select Excel File to Analyze
+      </button>
+      <input type="file" id="fileInput" accept=".xlsx, .xls" onchange="handleFile(event)" style="display: none;" />
+      <button onclick="clearPPAData()" class="reset-button" id="clearButton" style="display: none; margin-top: 1rem;">🔄 Clear Data</button>
+    </div>
+
+    <div class="summary" id="summarySection" style="display: none;">
+      <h2>📊 PPA Analysis Results</h2>
+      <div id="results" class="results-grid"></div>
+      
+      <!-- Volume Analysis Section -->
+      <div class="volume-analysis" id="volumeAnalysis" style="display: none;">
+        <h3>📦 Volume Analysis (RT PPA Only)</h3>
+        <div class="volume-results">
+          <div class="volume-metric">
+            <span class="volume-label">Small Volume Items (< 5000 cubic):</span>
+            <span class="volume-value" id="smallVolumeCount">0</span>
+            <span class="volume-percent" id="smallVolumePercent">(0%)</span>
+          </div>
+          <div class="volume-metric">
+            <span class="volume-label">Total Reach Truck Items:</span>
+            <span class="volume-value" id="totalReachItems">0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="details-section" id="detailsSection" style="display: none;">
+      <table id="detailsTable">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Unique LPs</th>
+            <th>Percentage</th>
+          </tr>
+        </thead>
+        <tbody id="detailsTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Script to load sidebar -->
+  <script>
+    fetch("../shared/sidebar.html")
+      .then(res => res.text())
+      .then(html => {
+        document.getElementById("sidebar-container").innerHTML = html;
+      });
+  </script>
+  <script src="PPA.js"></script>
+</body>
+
+</html>

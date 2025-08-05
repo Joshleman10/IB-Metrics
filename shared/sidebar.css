@@ -1,0 +1,48 @@
+/* Ensure the sidebar and main layout side-by-side */
+body {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  font-family: Arial, sans-serif;
+  background: #f5f7fa;
+  height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Sidebar styles */
+.sidebar {
+  width: 240px;
+  background-color: #2f3e4d;
+  color: white;
+  height: 100vh;
+  padding: 1rem;
+  box-sizing: border-box;
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+.sidebar h2 {
+  font-size: 1.4rem;
+  margin-bottom: 1.5rem;
+}
+
+.sidebar a {
+  display: block;
+  padding: 0.5rem 1rem;
+  color: white;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.sidebar a:hover {
+  background-color: #1f2a34;
+}
+
+/* Main content area */
+.main {
+  margin-left: 240px;
+  padding: 2rem;
+  width: calc(100% - 240px);
+  box-sizing: border-box;
+}

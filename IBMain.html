@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IB Tools SPA</title>
+  <link rel="stylesheet" href="shared/sidebar.css" />
+  <link rel="stylesheet" href="shared/spa.css" />
+</head>
+
+<body>
+  <div id="sidebar-container"></div>
+
+  <div class="main">
+    <div id="view-home" class="view">
+      <h1>Welcome to Inbound Department Metrics</h1>
+      <p>Select a tool from the left menu to get started.</p>
+    </div>
+
+    <div id="view-air" class="view" style="display:none">
+      <h1>Air vs Ground Analyzer</h1>
+      <!-- Placeholder for air tool UI -->
+      <p>Air vs Ground logic will be loaded here...</p>
+    </div>
+
+    <div id="view-hours" class="view" style="display:none">
+      <h1>Hours Breakdown</h1>
+      <!-- Placeholder for hours tool UI -->
+      <p>Hours breakdown logic will be loaded here...</p>
+    </div>
+
+    <div id="view-ppa" class="view" style="display:none">
+      <h1>PPA Analyzer</h1>
+      <!-- Placeholder for PPA tool UI -->
+      <p>PPA logic will be loaded here...</p>
+    </div>
+  </div>
+
+  <script>
+    fetch("shared/sidebar.html")
+      .then(res => res.text())
+      .then(html => {
+        document.getElementById("sidebar-container").innerHTML = html;
+        setupRouting();
+      });
+
+    function setupRouting() {
+      window.addEventListener("hashchange", handleRoute);
+      handleRoute();
+    }
+
+    function handleRoute() {
+      const hash = location.hash.replace('#', '') || 'home';
+      document.querySelectorAll('.view').forEach(view => {
+        view.style.display = 'none';
+      });
+      const target = document.getElementById(`view-${hash}`);
+      if (target) target.style.display = 'block';
+    }
+  </script>
+</body>
+
+</html>
