@@ -94,6 +94,9 @@ function handleFile(event) {
   
   if (!file) return;
 
+  // Display file information
+  displayFileInfo(file);
+
   // Check if XLSX library is loaded
   if (typeof XLSX === 'undefined') {
     console.error('XLSX library not loaded');
@@ -129,6 +132,38 @@ function handleFile(event) {
   reader.readAsArrayBuffer(file);
 }
 
+function displayFileInfo(file) {
+  const fileInfoEl = document.getElementById('fileInfo');
+  const fileNameEl = document.getElementById('fileName');
+  const fileSizeEl = document.getElementById('fileSize');
+  const fileDateEl = document.getElementById('fileDate');
+  
+  if (fileInfoEl && fileNameEl && fileSizeEl && fileDateEl) {
+    // Show file info section
+    fileInfoEl.style.display = 'block';
+    
+    // Display file name
+    fileNameEl.textContent = file.name;
+    
+    // Display file size
+    const sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
+    const sizeInKB = (file.size / 1024).toFixed(1);
+    const sizeDisplay = file.size > 1024 * 1024 ? `${sizeInMB} MB` : `${sizeInKB} KB`;
+    fileSizeEl.textContent = sizeDisplay;
+    
+    // Display file last modified date
+    const fileDate = new Date(file.lastModified);
+    const options = { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    };
+    fileDateEl.textContent = `Modified: ${fileDate.toLocaleDateString(undefined, options)}`;
+  }
+}
+
 function displayPPAResults(rows) {
   try {
     // Store current data for potential re-analysis
@@ -137,6 +172,9 @@ function displayPPAResults(rows) {
     const vasSet = new Set();
     const reachSet = new Set();
     const cartSet = new Set();
+    
+    // CORRECTED: Track all cart LPs to exclude from small volume analysis
+    const cartLPs = new Set();
     
     // Volume analysis for reach truck items
     let reachTruckItems = [];
@@ -164,22 +202,45 @@ function displayPPAResults(rows) {
           });
         }
       }
-      if (cartLocations.includes(loc)) cartSet.add(lp);
+      if (cartLocations.includes(loc)) {
+        cartSet.add(lp);
+        // CORRECTED: Track all cart LPs
+        cartLPs.add(lp);
+      }
     });
 
-    // Perform volume analysis on reach truck items
+    // CORRECTED: Perform volume analysis on reach truck items, excluding cart LPs
     if (Object.keys(itemMasterData).length > 0) {
+      console.log('Performing volume analysis...');
+      console.log(`Total reach truck items: ${reachTruckItems.length}`);
+      console.log(`Total cart LPs to exclude: ${cartLPs.size}`);
+      
       reachTruckItems.forEach(item => {
+        // CORRECTED: Skip items that are already in Cart PPA
+        if (cartLPs.has(item.lp)) {
+          console.log(`Skipping LP ${item.lp} - already in Cart PPA`);
+          return;
+        }
+        
         const masterItem = itemMasterData[item.itemNumber];
         if (masterItem && masterItem.CUBIC_VOL) {
           const totalVolume = masterItem.CUBIC_VOL * item.quantity;
           item.totalVolume = totalVolume;
           
+          // Small volume threshold: < 5000 cubic volume
           if (totalVolume < 5000) {
-            smallVolumeItems.push(item);
+            smallVolumeItems.push({
+              ...item,
+              cubicVolume: masterItem.CUBIC_VOL,
+              totalVolume: totalVolume
+            });
           }
+        } else {
+          console.warn(`No volume data found for item ${item.itemNumber} (LP: ${item.lp})`);
         }
       });
+      
+      console.log(`Small volume RT items found (excluding Cart PPA): ${smallVolumeItems.length}`);
     }
 
     const total = vasSet.size + reachSet.size + cartSet.size;
@@ -237,9 +298,9 @@ function displayPPAResults(rows) {
       }).join('');
     }
 
-    // Display volume analysis if item master data is available
+    // CORRECTED: Display volume analysis with proper exclusion logic
     if (Object.keys(itemMasterData).length > 0 && reachTruckItems.length > 0) {
-      displayVolumeAnalysis(reachTruckItems, smallVolumeItems);
+      displayVolumeAnalysis(reachTruckItems, smallVolumeItems, cartLPs);
     } else if (reachTruckItems.length > 0) {
       console.warn('Volume analysis unavailable: Item master data not loaded yet. Will retry when data loads.');
     }
@@ -255,6 +316,7 @@ function displayVolumeAnalysisOnly(rows) {
   try {
     let reachTruckItems = [];
     let smallVolumeItems = [];
+    const cartLPs = new Set();
 
     rows.forEach(row => {
       const loc = String(row["Location ID"] || "").trim().toUpperCase();
@@ -274,24 +336,42 @@ function displayVolumeAnalysisOnly(rows) {
           });
         }
       }
+      
+      // CORRECTED: Also track cart LPs in retry function
+      if (cartLocations.includes(loc)) {
+        cartLPs.add(lp);
+      }
     });
 
-    // Perform volume analysis
+    // CORRECTED: Perform volume analysis excluding cart LPs
     if (Object.keys(itemMasterData).length > 0) {
+      console.log('Re-running volume analysis...');
+      console.log(`Total reach truck items: ${reachTruckItems.length}`);
+      console.log(`Total cart LPs to exclude: ${cartLPs.size}`);
+      
       reachTruckItems.forEach(item => {
+        // CORRECTED: Skip items that are already in Cart PPA
+        if (cartLPs.has(item.lp)) {
+          return;
+        }
+        
         const masterItem = itemMasterData[item.itemNumber];
         if (masterItem && masterItem.CUBIC_VOL) {
           const totalVolume = masterItem.CUBIC_VOL * item.quantity;
           item.totalVolume = totalVolume;
           
           if (totalVolume < 5000) {
-            smallVolumeItems.push(item);
+            smallVolumeItems.push({
+              ...item,
+              cubicVolume: masterItem.CUBIC_VOL,
+              totalVolume: totalVolume
+            });
           }
         }
       });
 
       if (reachTruckItems.length > 0) {
-        displayVolumeAnalysis(reachTruckItems, smallVolumeItems);
+        displayVolumeAnalysis(reachTruckItems, smallVolumeItems, cartLPs);
       }
     }
   } catch (error) {
@@ -299,27 +379,43 @@ function displayVolumeAnalysisOnly(rows) {
   }
 }
 
-function displayVolumeAnalysis(reachTruckItems, smallVolumeItems) {
+// CORRECTED: Updated to show proper exclusion statistics
+function displayVolumeAnalysis(reachTruckItems, smallVolumeItems, cartLPs) {
   const volumeAnalysisEl = document.getElementById("volumeAnalysis");
   const smallVolumeCountEl = document.getElementById("smallVolumeCount");
   const smallVolumePercentEl = document.getElementById("smallVolumePercent");
-  const totalReachItemsEl = document.getElementById("totalReachItems");
 
-  if (volumeAnalysisEl && smallVolumeCountEl && smallVolumePercentEl && totalReachItemsEl) {
-    // Calculate totals
-    const totalReachItems = reachTruckItems.length;
+  if (volumeAnalysisEl && smallVolumeCountEl && smallVolumePercentEl) {
+    // CORRECTED: Calculate totals excluding cart LPs
+    const reachItemsNotInCart = reachTruckItems.filter(item => !cartLPs.has(item.lp));
+    const totalReachItemsNotInCart = reachItemsNotInCart.length;
     const smallVolumeCount = smallVolumeItems.length;
-    const smallVolumePercent = totalReachItems > 0 ? ((smallVolumeCount / totalReachItems) * 100).toFixed(1) : 0;
+    const smallVolumePercent = totalReachItemsNotInCart > 0 ? ((smallVolumeCount / totalReachItemsNotInCart) * 100).toFixed(1) : 0;
 
-    // Update display
+    // Update display with corrected logic
     smallVolumeCountEl.textContent = smallVolumeCount;
-    smallVolumePercentEl.textContent = `(${smallVolumePercent}% of RT items)`;
-    totalReachItemsEl.textContent = totalReachItems;
+    smallVolumePercentEl.textContent = `(${smallVolumePercent}% of RT items not in Cart PPA)`;
 
     // Show volume analysis section
     volumeAnalysisEl.style.display = "block";
 
-    console.log(`Volume Analysis: ${smallVolumeCount}/${totalReachItems} reach truck items are small volume (${smallVolumePercent}%)`);
+    // Enhanced logging for debugging
+    console.log('=== CORRECTED VOLUME ANALYSIS RESULTS ===');
+    console.log(`Total reach truck items: ${reachTruckItems.length}`);
+    console.log(`Cart LPs (excluded): ${cartLPs.size}`);
+    console.log(`RT items analyzed: ${totalReachItemsNotInCart}`);
+    console.log(`Small volume RT items (could be cart): ${smallVolumeCount}`);
+    console.log(`Percentage: ${smallVolumePercent}%`);
+    
+    if (smallVolumeItems.length > 0) {
+      console.log('Sample small volume items:', smallVolumeItems.slice(0, 3).map(item => ({
+        lp: item.lp,
+        item: item.itemNumber,
+        quantity: item.quantity,
+        volume: item.totalVolume,
+        location: item.location
+      })));
+    }
   }
 }
 
@@ -330,6 +426,10 @@ function clearPPAData() {
   document.getElementById("summarySection").style.display = "none";
   document.getElementById("detailsSection").style.display = "none";
   document.getElementById("clearButton").style.display = "none";
+  
+  // Hide file info
+  const fileInfoEl = document.getElementById('fileInfo');
+  if (fileInfoEl) fileInfoEl.style.display = 'none';
   
   // Clear results content
   const resultsDiv = document.getElementById("results");
@@ -343,6 +443,9 @@ function clearPPAData() {
   // Reset file input
   const fileInput = document.getElementById("fileInput");
   if (fileInput) fileInput.value = '';
+  
+  // Clear stored PPA data
+  currentPPARows = null;
   
   console.log('PPA data cleared');
 }

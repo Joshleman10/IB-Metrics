@@ -110,7 +110,9 @@ function createChart(breakdownTotals, canvasId, title, dataset = null) {
   } catch (error) {
     console.error(`Error creating chart ${canvasId}:`, error);
   }
-}// Register Chart.js plugin
+}
+
+// Register Chart.js plugin
 Chart.register(ChartDataLabels);
 
 // Updated mapping to include all inbound labor functions
@@ -600,88 +602,6 @@ function updateTable(breakdownTotals, inboundTotal, tableId) {
   });
 }
 
-function createChart(breakdownTotals, canvasId, title, dataset = null) {
-  const ctx = document.getElementById(canvasId);
-  
-  // Destroy existing chart
-  if (dataset === 'A' && chartA) {
-    chartA.destroy();
-  } else if (dataset === 'B' && chartB) {
-    chartB.destroy();
-  } else if (!dataset && currentChart) {
-    currentChart.destroy();
-  }
-
-  const sortedGroups = Object.entries(breakdownTotals)
-    .sort(([,a], [,b]) => b - a);
-
-  const chartData = {
-    labels: sortedGroups.map(([group]) => group),
-    data: sortedGroups.map(([, hours]) => hours),
-    backgroundColor: sortedGroups.map(([group]) => groupColors[group] || '#95a5a6')
-  };
-
-  const chart = new Chart(ctx, {
-    type: "pie",
-    data: {
-      labels: chartData.labels,
-      datasets: [{
-        label: "Hours Breakdown",
-        data: chartData.data,
-        backgroundColor: chartData.backgroundColor
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      plugins: {
-        legend: { 
-          position: 'bottom',
-          labels: {
-            padding: 15,
-            usePointStyle: true,
-            font: { size: 11 }
-          }
-        },
-        tooltip: {
-          callbacks: {
-            label: function (context) {
-              const total = context.chart._metasets[0].total;
-              const value = context.raw;
-              const percent = ((value / total) * 100).toFixed(2);
-              return `${context.label}: ${value.toFixed(2)} hrs (${percent}%)`;
-            }
-          }
-        },
-        title: {
-          display: true,
-          text: title,
-          font: { size: 14 }
-        },
-        datalabels: {
-          color: '#fff',
-          font: { weight: 'bold', size: 10 },
-          formatter: (value, context) => {
-            const total = context.chart._metasets[0].total;
-            const percent = ((value / total) * 100).toFixed(1);
-            return percent > 3 ? `${percent}%` : '';
-          }
-        }
-      }
-    },
-    plugins: [ChartDataLabels]
-  });
-
-  // Store chart reference
-  if (dataset === 'A') {
-    chartA = chart;
-  } else if (dataset === 'B') {
-    chartB = chart;
-  } else {
-    currentChart = chart;
-  }
-}
-
 function checkForComparison() {
   console.log('Checking for comparison:', { datasetA: !!datasetA, datasetB: !!datasetB });
   if (datasetA && datasetB) {
@@ -912,16 +832,18 @@ function restoreDatasetB() {
   });
 }
 
-// PDF Generation Function
+// Enhanced PDF Generation Function with Charts and Better Formatting
 async function generatePDFReport() {
   try {
-    // Load jsPDF from CDN if not already loaded
+    console.log('PDF Generation started - Mode:', isComparisonMode ? 'Comparison' : 'Single');
+    console.log('Data available:', { singleModeData: !!singleModeData, datasetA: !!datasetA, datasetB: !!datasetB });
+    
+    // Load required libraries if not already loaded
     if (typeof window.jsPDF === 'undefined') {
       const script = document.createElement('script');
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
       document.head.appendChild(script);
       
-      // Wait for script to load
       await new Promise((resolve, reject) => {
         script.onload = resolve;
         script.onerror = reject;
@@ -931,113 +853,549 @@ async function generatePDFReport() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
     const margin = 20;
     let yPosition = margin;
 
-    // Title
-    doc.setFontSize(18);
+    // Helper function to add a new page if needed
+    function checkPageBreak(additionalHeight = 20) {
+      if (yPosition + additionalHeight > pageHeight - margin) {
+        doc.addPage();
+        yPosition = margin;
+        return true;
+      }
+      return false;
+    }
+
+    // Helper function to draw a horizontal line
+    function drawLine(y, startX = margin, endX = pageWidth - margin) {
+      doc.setDrawColor(200, 200, 200);
+      doc.line(startX, y, endX, y);
+    }
+
+    // Helper function to add section header
+    function addSectionHeader(title, y) {
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(41, 128, 185); // Blue color
+      doc.text(title, margin, y);
+      drawLine(y + 3);
+      return y + 15;
+    }
+
+    // Title and Header ONLY
+    doc.setFontSize(22);
     doc.setFont(undefined, 'bold');
+    doc.setTextColor(52, 73, 94); // Dark blue-gray
     doc.text('Inbound Hours Breakdown Report', pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 15;
+
+    // Subtitle with date
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(127, 140, 141); // Gray
+    doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 10;
+    
+    // Add decorative line
+    doc.setDrawColor(52, 152, 219);
+    doc.setLineWidth(2);
+    doc.line(margin, yPosition, pageWidth - margin, yPosition);
     yPosition += 20;
 
-    // Date
-    doc.setFontSize(10);
-    doc.setFont(undefined, 'normal');
-    doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth / 2, yPosition, { align: 'center' });
-    yPosition += 20;
+    console.log('About to generate PDF for mode:', isComparisonMode ? 'Comparison' : 'Single');
 
     if (isComparisonMode && datasetA && datasetB) {
-      // Comparison Report
-      doc.setFontSize(14);
-      doc.setFont(undefined, 'bold');
-      doc.text('Side-by-Side Comparison Analysis', margin, yPosition);
-      yPosition += 15;
-
-      // Dataset headers
-      doc.setFontSize(12);
-      doc.text('Dataset A (4-Week Average)', margin, yPosition);
-      doc.text('Dataset B (Daily Data)', pageWidth / 2 + 10, yPosition);
-      yPosition += 10;
-
-      // Get all unique groups
-      const allGroups = new Set([...Object.keys(datasetA.totals), ...Object.keys(datasetB.totals)]);
-      
-      Array.from(allGroups).sort().forEach(group => {
-        const hoursA = datasetA.totals[group] || 0;
-        const hoursB = datasetB.totals[group] || 0;
-        const percentA = datasetA.total > 0 ? (hoursA / datasetA.total * 100) : 0;
-        const percentB = datasetB.total > 0 ? (hoursB / datasetB.total * 100) : 0;
-        const percentDiff = percentB - percentA;
-
-        doc.setFontSize(10);
-        doc.setFont(undefined, 'bold');
-        doc.text(group, margin, yPosition);
-        
-        doc.setFont(undefined, 'normal');
-        doc.text(`${percentA.toFixed(1)}%`, margin + 60, yPosition);
-        doc.text(`${percentB.toFixed(1)}%`, pageWidth / 2 + 70, yPosition);
-        
-        // Difference with color indication
-        const diffText = `${percentDiff >= 0 ? '+' : ''}${percentDiff.toFixed(1)}%`;
-        doc.text(diffText, pageWidth - margin - 30, yPosition);
-        
-        yPosition += 8;
-        
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = margin;
-        }
-      });
-
+      console.log('Generating comparison PDF');
+      await generateComparisonPDF(doc, pageWidth, pageHeight, margin, yPosition, checkPageBreak, drawLine, addSectionHeader);
     } else if (singleModeData) {
-      // Single Analysis Report
-      doc.setFontSize(14);
-      doc.setFont(undefined, 'bold');
-      doc.text('Single Analysis Report', margin, yPosition);
-      yPosition += 15;
-
-      doc.setFontSize(12);
-      doc.text(`Total Inbound Hours: ${singleModeData.total.toFixed(2)} hrs`, margin, yPosition);
-      yPosition += 15;
-
-      // Table headers
-      doc.setFont(undefined, 'bold');
-      doc.text('Function Group', margin, yPosition);
-      doc.text('Hours', margin + 80, yPosition);
-      doc.text('Percentage', margin + 120, yPosition);
-      yPosition += 10;
-
-      // Table data
-      const sortedGroups = Object.entries(singleModeData.totals).sort(([,a], [,b]) => b - a);
-      
-      sortedGroups.forEach(([group, hours]) => {
-        const percent = (hours / singleModeData.total) * 100;
-        
-        doc.setFont(undefined, 'normal');
-        doc.text(group, margin, yPosition);
-        doc.text(hours.toFixed(2), margin + 80, yPosition);
-        doc.text(`${percent.toFixed(2)}%`, margin + 120, yPosition);
-        yPosition += 8;
-        
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = margin;
-        }
-      });
+      console.log('Generating single analysis PDF');
+      await generateSingleAnalysisPDF(doc, pageWidth, pageHeight, margin, yPosition, checkPageBreak, drawLine, addSectionHeader);
     } else {
-      // No data available
+      console.log('No data available for PDF');
       doc.setFontSize(12);
+      doc.setTextColor(231, 76, 60); // Red
       doc.text('No data available to generate report.', margin, yPosition);
     }
 
     // Save the PDF
-    const fileName = isComparisonMode ? 'inbound-hours-comparison.pdf' : 'inbound-hours-analysis.pdf';
+    const fileName = isComparisonMode ? 'inbound-hours-comparison-report.pdf' : 'inbound-hours-analysis-report.pdf';
     doc.save(fileName);
     
   } catch (error) {
     console.error('Error generating PDF:', error);
     alert('Error generating PDF. Please try again.');
   }
+}
+
+// Generate Comparison Mode PDF
+async function generateComparisonPDF(doc, pageWidth, pageHeight, margin, yPosition, checkPageBreak, drawLine, addSectionHeader) {
+  // Executive Summary Section
+  yPosition = addSectionHeader('Executive Summary', yPosition);
+  
+  doc.setFontSize(11);
+  doc.setFont(undefined, 'normal');
+  doc.setTextColor(44, 62, 80);
+  
+  const totalHoursA = datasetA.total;
+  const totalHoursB = datasetB.total;
+  const hoursDifference = totalHoursB - totalHoursA;
+  const percentChange = totalHoursA > 0 ? ((hoursDifference / totalHoursA) * 100) : 0;
+  
+  doc.text(`Dataset A (4-Week Average): ${totalHoursA.toFixed(2)} hours`, margin, yPosition);
+  yPosition += 8;
+  doc.text(`Dataset B (Daily Data): ${totalHoursB.toFixed(2)} hours`, margin, yPosition);
+  yPosition += 8;
+  
+  // Color code the difference
+  const changeColor = hoursDifference > 0 ? [231, 76, 60] : [46, 204, 113]; // Red for increase, Green for decrease
+  doc.setTextColor(...changeColor);
+  doc.text(`Total Change: ${hoursDifference >= 0 ? '+' : ''}${hoursDifference.toFixed(2)} hours (${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(1)}%)`, margin, yPosition);
+  doc.setTextColor(44, 62, 80); // Reset to dark
+  yPosition += 20;
+
+  checkPageBreak(100);
+
+  // Add charts
+  yPosition = await addChartsToComparison(doc, yPosition, pageWidth, margin, checkPageBreak);
+
+  checkPageBreak(150);
+
+  // Check if we need a new page for the table
+  checkPageBreak(100);
+  
+  // Detailed Analysis Section
+  yPosition = addSectionHeader('Detailed Function Analysis', yPosition);
+  
+  // Create a more readable table with better spacing
+  const tableWidth = pageWidth - 2 * margin;
+  const colWidths = [50, 25, 25, 30, 30]; // Adjusted widths
+  const colPositions = [
+    margin, 
+    margin + colWidths[0], 
+    margin + colWidths[0] + colWidths[1], 
+    margin + colWidths[0] + colWidths[1] + colWidths[2], 
+    margin + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3]
+  ];
+
+  // Helper function to redraw table headers after page break
+  function drawTableHeaders(yPos) {
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'bold');
+    doc.setFillColor(52, 152, 219);
+    doc.setTextColor(255, 255, 255);
+    doc.rect(margin, yPos - 4, tableWidth, 10, 'F');
+    
+    doc.text('Function Group', colPositions[0] + 1, yPos + 2);
+    doc.text('4wk %', colPositions[1] + 1, yPos + 2);
+    doc.text('Daily %', colPositions[2] + 1, yPos + 2);
+    doc.text('Difference', colPositions[3] + 1, yPos + 2);
+    doc.text('Status', colPositions[4] + 1, yPos + 2);
+    return yPos + 12;
+  }
+
+  // Draw initial table headers
+  yPosition = drawTableHeaders(yPosition);
+
+  // Table data - ensure we capture all groups
+  const allGroups = new Set([...Object.keys(datasetA.totals), ...Object.keys(datasetB.totals)]);
+  const sortedGroups = Array.from(allGroups).sort((a, b) => {
+    // Sort by Dataset A percentage (descending) for consistency
+    const percentA_a = datasetA.total > 0 ? ((datasetA.totals[a] || 0) / datasetA.total * 100) : 0;
+    const percentA_b = datasetA.total > 0 ? ((datasetA.totals[b] || 0) / datasetA.total * 100) : 0;
+    return percentA_b - percentA_a;
+  });
+  
+  console.log('PDF: Processing', sortedGroups.length, 'function groups:', sortedGroups); // Debug log
+  
+  let rowIndex = 0;
+  sortedGroups.forEach(group => {
+    // Check for page break and redraw headers if needed
+    if (checkPageBreak(12)) {
+      yPosition = drawTableHeaders(yPosition);
+      rowIndex = 0; // Reset row index for alternating colors after page break
+    }
+    
+    const hoursA = datasetA.totals[group] || 0;
+    const hoursB = datasetB.totals[group] || 0;
+    const percentA = datasetA.total > 0 ? (hoursA / datasetA.total * 100) : 0;
+    const percentB = datasetB.total > 0 ? (hoursB / datasetB.total * 100) : 0;
+    const percentDiff = percentB - percentA;
+
+    // Alternate row colors
+    if (rowIndex % 2 === 0) {
+      doc.setFillColor(248, 249, 250);
+      doc.rect(margin, yPosition - 4, tableWidth, 10, 'F');
+    }
+
+    doc.setFontSize(8);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(44, 62, 80);
+    
+    // Function name (truncate if too long)
+    const groupName = group.length > 18 ? group.substring(0, 15) + '...' : group;
+    doc.text(groupName, colPositions[0] + 1, yPosition + 2);
+    
+    doc.text(`${percentA.toFixed(1)}%`, colPositions[1] + 1, yPosition + 2);
+    doc.text(`${percentB.toFixed(1)}%`, colPositions[2] + 1, yPosition + 2);
+    
+    // Color code the difference
+    const diffColor = Math.abs(percentDiff) > 1 ? (percentDiff > 0 ? [231, 76, 60] : [46, 204, 113]) : [44, 62, 80];
+    doc.setTextColor(...diffColor);
+    doc.text(`${percentDiff >= 0 ? '+' : ''}${percentDiff.toFixed(1)}%`, colPositions[3] + 1, yPosition + 2);
+    
+    // Status indicator
+    let status = 'Normal';
+    if (Math.abs(percentDiff) > 2) status = percentDiff > 0 ? 'Over' : 'Under';
+    doc.text(status, colPositions[4] + 1, yPosition + 2);
+    
+    doc.setTextColor(44, 62, 80); // Reset color
+    yPosition += 10;
+    rowIndex++;
+  });
+
+  // Key insights section
+  if (yPosition > pageHeight - 100) {
+    doc.addPage();
+    yPosition = margin;
+  } else {
+    yPosition += 15;
+  }
+  
+  yPosition = addSectionHeader('Key Insights & Recommendations', yPosition);
+  
+  doc.setFontSize(10);
+  doc.setFont(undefined, 'normal');
+  
+  // Summary stats
+  const totalGroups = sortedGroups.length;
+  const overspendGroups = sortedGroups.filter(group => {
+    const hoursA = datasetA.totals[group] || 0;
+    const hoursB = datasetB.totals[group] || 0;
+    const percentA = datasetA.total > 0 ? (hoursA / datasetA.total * 100) : 0;
+    const percentB = datasetB.total > 0 ? (hoursB / datasetB.total * 100) : 0;
+    return (percentB - percentA) > 2;
+  }).length;
+  
+  const underspendGroups = sortedGroups.filter(group => {
+    const hoursA = datasetA.totals[group] || 0;
+    const hoursB = datasetB.totals[group] || 0;
+    const percentA = datasetA.total > 0 ? (hoursA / datasetA.total * 100) : 0;
+    const percentB = datasetB.total > 0 ? (hoursB / datasetB.total * 100) : 0;
+    return (percentB - percentA) < -2;
+  }).length;
+
+  // Overall summary
+  doc.setFont(undefined, 'bold');
+  doc.text('Summary:', margin, yPosition);
+  yPosition += 12;
+  doc.setFont(undefined, 'normal');
+  doc.text(`• Total Functions Analyzed: ${totalGroups}`, margin, yPosition);
+  yPosition += 10;
+  doc.setTextColor(231, 76, 60);
+  doc.text(`• Functions Over Budget (>2%): ${overspendGroups}`, margin, yPosition);
+  yPosition += 10;
+  doc.setTextColor(46, 204, 113);
+  doc.text(`• Functions Under Budget (>2%): ${underspendGroups}`, margin, yPosition);
+  yPosition += 15;
+  doc.setTextColor(44, 62, 80);
+  
+  // Find biggest changes
+  const significantChanges = sortedGroups
+    .map(group => {
+      const hoursA = datasetA.totals[group] || 0;
+      const hoursB = datasetB.totals[group] || 0;
+      const percentA = datasetA.total > 0 ? (hoursA / datasetA.total * 100) : 0;
+      const percentB = datasetB.total > 0 ? (hoursB / datasetB.total * 100) : 0;
+      return { group, diff: percentB - percentA };
+    })
+    .filter(item => Math.abs(item.diff) > 1)
+    .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+
+  if (significantChanges.length > 0) {
+    doc.setFont(undefined, 'bold');
+    doc.text('Significant Changes (>1% vs 4-week average):', margin, yPosition);
+    yPosition += 12;
+    doc.setFont(undefined, 'normal');
+    
+    significantChanges.slice(0, 6).forEach((change, index) => {
+      checkPageBreak(12);
+      const color = change.diff > 0 ? [231, 76, 60] : [46, 204, 113];
+      const arrow = change.diff > 0 ? '^' : 'v'; // Use simple ASCII characters
+      const status = change.diff > 0 ? 'OVER' : 'UNDER';
+      
+      doc.setTextColor(44, 62, 80);
+      doc.text(`${index + 1}. ${change.group}:`, margin + 5, yPosition);
+      doc.setTextColor(...color);
+      doc.text(`${arrow} ${status} by ${Math.abs(change.diff).toFixed(1)}%`, margin + 90, yPosition);
+      yPosition += 10;
+    });
+  } else {
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(46, 204, 113);
+    doc.text('✓ All functions are within 1% of their 4-week average', margin, yPosition);
+    yPosition += 12;
+  }
+}
+
+// Generate Single Analysis PDF
+async function generateSingleAnalysisPDF(doc, pageWidth, pageHeight, margin, yPosition, checkPageBreak, drawLine, addSectionHeader) {
+  console.log('Starting single analysis PDF generation');
+  
+  // Add chart first
+  yPosition = await addChartToSingle(doc, yPosition, pageWidth, margin, checkPageBreak);
+
+  // Force page break after chart for better layout
+  doc.addPage();
+  yPosition = margin;
+
+  // Detailed breakdown table (starts on page 2)
+  yPosition = addSectionHeader('Function Breakdown', yPosition);
+  
+  // Table setup
+  const tableWidth = pageWidth - 2 * margin;
+  const colWidths = [60, 30, 30, 40];
+  const colPositions = [margin, margin + colWidths[0], margin + colWidths[0] + colWidths[1], 
+                       margin + colWidths[0] + colWidths[1] + colWidths[2]];
+
+  // Helper function to redraw table headers after page break
+  function drawTableHeaders(yPos) {
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'bold');
+    doc.setFillColor(52, 152, 219);
+    doc.setTextColor(255, 255, 255);
+    doc.rect(margin, yPos - 4, tableWidth, 10, 'F');
+    
+    doc.text('Function Group', colPositions[0] + 1, yPos + 2);
+    doc.text('Hours', colPositions[1] + 1, yPos + 2);
+    doc.text('Percentage', colPositions[2] + 1, yPos + 2);
+    doc.text('Category', colPositions[3] + 1, yPos + 2);
+    return yPos + 12;
+  }
+
+  // Draw initial table headers
+  yPosition = drawTableHeaders(yPosition);
+
+  // Sort by hours descending
+  const sortedGroups = Object.entries(singleModeData.totals).sort(([,a], [,b]) => b - a);
+  
+  let rowIndex = 0;
+  sortedGroups.forEach(([group, hours]) => {
+    // Check for page break and redraw headers if needed
+    if (checkPageBreak(12)) {
+      yPosition = drawTableHeaders(yPosition);
+      rowIndex = 0; // Reset row index for alternating colors after page break
+    }
+    
+    const percent = (hours / singleModeData.total) * 100;
+    
+    // Alternate row colors
+    if (rowIndex % 2 === 0) {
+      doc.setFillColor(248, 249, 250);
+      doc.rect(margin, yPosition - 4, tableWidth, 10, 'F');
+    }
+
+    doc.setFontSize(8);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(44, 62, 80);
+    
+    // Function name
+    const groupName = group.length > 20 ? group.substring(0, 17) + '...' : group;
+    doc.text(groupName, colPositions[0] + 1, yPosition + 2);
+    doc.text(hours.toFixed(2), colPositions[1] + 1, yPosition + 2);
+    doc.text(`${percent.toFixed(1)}%`, colPositions[2] + 1, yPosition + 2);
+    
+    // Categorize by percentage
+    let category = 'Minor';
+    let categoryColor = [127, 140, 141]; // Gray
+    if (percent >= 30) {
+      category = 'Major';
+      categoryColor = [231, 76, 60]; // Red
+    } else if (percent >= 10) {
+      category = 'Significant';
+      categoryColor = [230, 126, 34]; // Orange
+    } else if (percent >= 5) {
+      category = 'Moderate';
+      categoryColor = [241, 196, 15]; // Yellow
+    }
+    
+    doc.setTextColor(...categoryColor);
+    doc.text(category, colPositions[3] + 1, yPosition + 2);
+    doc.setTextColor(44, 62, 80);
+    
+    yPosition += 10;
+    rowIndex++;
+  });
+
+  // End of report - no insights section
+  console.log('Single analysis PDF generation completed');
+}
+
+// Add charts to comparison PDF
+async function addChartsToComparison(doc, yPosition, pageWidth, margin, checkPageBreak) {
+  try {
+    checkPageBreak(80);
+    
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(44, 62, 80);
+    doc.text('Visual Comparison Charts', margin, yPosition);
+    yPosition += 15;
+
+    // Create and use separate canvases for each chart
+    // Generate chart for Dataset A
+    const tempCanvasA = document.createElement('canvas');
+    tempCanvasA.width = 400;
+    tempCanvasA.height = 300;
+    tempCanvasA.style.display = 'none';
+    document.body.appendChild(tempCanvasA);
+
+    const chartA = await createTempChart(tempCanvasA, datasetA.totals, 'Dataset A (4-Week Average)');
+    const imgDataA = tempCanvasA.toDataURL('image/png');
+    
+    doc.text('Dataset A - 4 Week Average', margin, yPosition);
+    doc.addImage(imgDataA, 'PNG', margin, yPosition + 5, 80, 60);
+    
+    // Clean up chart A before creating chart B
+    chartA.destroy();
+    document.body.removeChild(tempCanvasA);
+    
+    // Generate chart for Dataset B with new canvas
+    const tempCanvasB = document.createElement('canvas');
+    tempCanvasB.width = 400;
+    tempCanvasB.height = 300;
+    tempCanvasB.style.display = 'none';
+    document.body.appendChild(tempCanvasB);
+
+    const chartB = await createTempChart(tempCanvasB, datasetB.totals, 'Dataset B (Daily Data)');
+    const imgDataB = tempCanvasB.toDataURL('image/png');
+    
+    doc.text('Dataset B - Daily Data', pageWidth/2 + 10, yPosition);
+    doc.addImage(imgDataB, 'PNG', pageWidth/2 + 10, yPosition + 5, 80, 60);
+    
+    yPosition += 75;
+
+    // Clean up chart B
+    chartB.destroy();
+    document.body.removeChild(tempCanvasB);
+    
+    return yPosition;
+  } catch (error) {
+    console.warn('Could not generate charts for PDF:', error);
+    doc.setFontSize(10);
+    doc.setTextColor(127, 140, 141);
+    doc.text('Charts could not be generated for this report.', margin, yPosition);
+    return yPosition + 15;
+  }
+}
+
+// Add chart to single analysis PDF
+async function addChartToSingle(doc, yPosition, pageWidth, margin, checkPageBreak) {
+  try {
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = 500;
+    tempCanvas.height = 400;
+    tempCanvas.style.display = 'none';
+    document.body.appendChild(tempCanvas);
+
+    checkPageBreak(100);
+    
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(44, 62, 80);
+    doc.text('Hours Distribution Chart', margin, yPosition);
+    yPosition += 15;
+
+    const chart = await createTempChart(tempCanvas, singleModeData.totals, 'Inbound Hours by Function');
+    const imgData = tempCanvas.toDataURL('image/png');
+    
+    // Center the chart
+    const chartWidth = 120;
+    const chartHeight = 90;
+    const chartX = (pageWidth - chartWidth) / 2;
+    
+    doc.addImage(imgData, 'PNG', chartX, yPosition, chartWidth, chartHeight);
+    yPosition += chartHeight + 10;
+
+    // Clean up
+    chart.destroy();
+    document.body.removeChild(tempCanvas);
+    
+    return yPosition;
+  } catch (error) {
+    console.warn('Could not generate chart for PDF:', error);
+    doc.setFontSize(10);
+    doc.setTextColor(127, 140, 141);
+    doc.text('Chart could not be generated for this report.', margin, yPosition);
+    return yPosition + 15;
+  }
+}
+
+// Create temporary chart for PDF
+function createTempChart(canvas, data, title) {
+  return new Promise((resolve, reject) => {
+    try {
+      const ctx = canvas.getContext('2d');
+      
+      // Clear any existing chart data on the canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      const sortedGroups = Object.entries(data).sort(([,a], [,b]) => b - a);
+      const chartData = {
+        labels: sortedGroups.map(([group]) => group),
+        data: sortedGroups.map(([, hours]) => hours),
+        backgroundColor: sortedGroups.map(([group]) => groupColors[group] || '#95a5a6')
+      };
+
+      const chart = new Chart(ctx, {
+        type: "pie",
+        data: {
+          labels: chartData.labels,
+          datasets: [{
+            label: "Hours",
+            data: chartData.data,
+            backgroundColor: chartData.backgroundColor
+          }]
+        },
+        options: {
+          responsive: false,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { 
+              position: 'right',
+              labels: {
+                padding: 10,
+                usePointStyle: true,
+                font: { size: 8 }
+              }
+            },
+            tooltip: { enabled: false },
+            title: {
+              display: true,
+              text: title,
+              font: { size: 12 }
+            },
+            // Remove datalabels plugin to clean up chart
+            datalabels: {
+              display: false
+            }
+          },
+          animation: {
+            duration: 0, // Disable animation for faster rendering
+            onComplete: () => {
+              // Small delay to ensure chart is fully rendered
+              setTimeout(() => resolve(chart), 100);
+            }
+          }
+        },
+        // Don't include datalabels plugin for cleaner charts
+        plugins: []
+      });
+    } catch (error) {
+      console.error('Error creating temp chart:', error);
+      reject(error);
+    }
+  });
 }
 
 // Load saved data on page load

@@ -28,6 +28,21 @@
         📂 Select Excel File to Analyze
       </button>
       <input type="file" id="fileInput" accept=".xlsx, .xls" onchange="handleFile(event)" style="display: none;" />
+      
+      <!-- File Info Display -->
+      <div class="file-info" id="fileInfo" style="display: none;">
+        <div class="file-details">
+          <span class="file-icon">📄</span>
+          <div class="file-text">
+            <div class="file-name" id="fileName"></div>
+            <div class="file-metadata">
+              <span id="fileSize"></span> • 
+              <span id="fileDate"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
       <button onclick="clearPPAData()" class="reset-button" id="clearButton" style="display: none; margin-top: 1rem;">🔄 Clear Data</button>
     </div>
 
@@ -37,16 +52,12 @@
       
       <!-- Volume Analysis Section -->
       <div class="volume-analysis" id="volumeAnalysis" style="display: none;">
-        <h3>📦 Volume Analysis (RT PPA Only)</h3>
+        <h3>📦 Volume Analysis (Reach Truck Only)</h3>
         <div class="volume-results">
           <div class="volume-metric">
             <span class="volume-label">Small Volume Items (< 5000 cubic):</span>
             <span class="volume-value" id="smallVolumeCount">0</span>
             <span class="volume-percent" id="smallVolumePercent">(0%)</span>
-          </div>
-          <div class="volume-metric">
-            <span class="volume-label">Total Reach Truck Items:</span>
-            <span class="volume-value" id="totalReachItems">0</span>
           </div>
         </div>
       </div>
